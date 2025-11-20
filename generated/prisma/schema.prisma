@@ -1,76 +1,62 @@
-// Prisma schema for Better Auth
-// learn more: https://better-auth.com/docs/concepts/database
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
-
-// NOTE: When using mysql or sqlserver, uncomment the //@db.Text annotations in model Account below
-// Further reading:
-// https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
 
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  createdBy   User   @relation(fields: [createdById], references: [id])
-  createdById String
-
-  @@index([name])
-}
+// =========================================
+// 1. BETTER AUTH CORE
+// =========================================
 
 model User {
-  id            String    @id
-  name          String //@db.Text
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String? //@db.Text
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @default(now()) @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  posts         Post[]
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  @@unique([email])
+  sessions    Session[]
+  accounts    Account[]
+  members     Member[]
+  invitations Invitation[]
+
   @@map("user")
 }
 
 model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String? //@db.Text
-  userAgent String? //@db.Text
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?  @db.Text
+  userAgent            String?  @db.Text
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String?
 
-  @@unique([token])
   @@map("session")
 }
 
 model Account {
   id                    String    @id
-  accountId             String //@db.Text
-  providerId            String //@db.Text
+  accountId             String    @db.Text
+  providerId            String    @db.Text
   userId                String
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken           String? //@db.Text
-  refreshToken          String? //@db.Text
-  idToken               String? //@db.Text
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
-  scope                 String? //@db.Text
-  password              String? //@db.Text
+  scope                 String?   @db.Text
+  password              String?   @db.Text
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -79,11 +65,143 @@ model Account {
 
 model Verification {
   id         String   @id
-  identifier String //@db.Text
-  value      String //@db.Text
+  identifier String   @db.Text
+  value      String   @db.Text
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
+  updatedAt  DateTime @updatedAt
 
   @@map("verification")
+}
+
+// =========================================
+// 2. BETTER AUTH ORGANIZATION PLUGIN
+// =========================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String?  @unique
+  logo      String?  @db.Text
+  createdAt DateTime @default(now())
+  metadata  String?  @db.Text
+
+  members     Member[]
+  invitations Invitation[]
+
+  companies Company[]
+
+  // CORRECT RELATION: Data is linked to the Client (Organization), not the Location ID yet.
+  weatherData dashboard_weather[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime     @default(now())
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@map("invitation")
+}
+
+// =========================================
+// 3. BLACKDOG HIERARCHY
+// =========================================
+
+model Company {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  locations Location[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("company")
+}
+
+model Location {
+  id   String @id @default(cuid())
+  name String
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  address String?
+  city    String?
+  state   String?
+  zip     String?
+
+  isActive      Boolean @default(true)
+  latitude      Float?
+  longitude     Float?
+  googlePlaceId String?
+
+  // REMOVED: weatherData 
+  // Why? Because dashboard_weather doesn't have a 'location_id' column yet.
+  // You must query it by filtering for City + Organization.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("location")
+}
+
+// =========================================
+// 4. DATA LAKE TABLES
+// =========================================
+
+model dashboard_forecast {
+  id               Int       @id @default(autoincrement())
+  client_id        String
+  client_name      String?   @db.Text
+  city             String
+  forecast_date    DateTime? @db.Timestamp(0)
+  temp_day         Float?
+  temp_min         Float?
+  temp_max         Float?
+  rain_probability Float?
+  description      String?   @db.Text
+}
+
+model dashboard_weather {
+  id Int @id @default(autoincrement())
+
+  // This field is the Foreign Key
+  client_id String
+
+  // DEFINITION: This tells Prisma that 'client_id' points to 'Organization.id'
+  organization Organization @relation(fields: [client_id], references: [id])
+
+  client_name   String?   @db.Text
+  city          String
+  measured_at   DateTime? @db.Timestamp(0)
+  temperature_f Float?
+  description   String?   @db.Text
+  humidity_pct  BigInt?
+
+  // For query speed, index the lookup columns
+  @@index([client_id])
+  @@index([city])
 }
