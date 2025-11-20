@@ -91,7 +91,9 @@ model Organization {
   companies   Company[]
 
   // CORRECT RELATION: Data is linked to the Client (Organization), not the Location ID yet.
-  weatherData dashboard_weather[] 
+  weatherData      dashboard_weather[] 
+  competitorData   dashboard_competitors[]
+  reviewData       dashboard_reviews[]
 
   @@map("organization")
 }
@@ -203,4 +205,31 @@ model dashboard_weather {
   // For query speed, index the lookup columns
   @@index([client_id])
   @@index([city])
+}
+
+model dashboard_reviews {
+  id               Int          @id @default(autoincrement())
+  client_id        String
+  organization     Organization @relation(fields: [client_id], references: [id])
+  review_date      DateTime     @db.Timestamp(0)
+  rating           Float?
+  sentiment_score  Float?
+  source           String?      @db.Text
+  content          String?      @db.Text
+  author           String?      @db.Text
+
+  @@index([client_id])
+}
+
+model dashboard_competitors {
+  id               Int          @id @default(autoincrement())
+  client_id        String
+  organization     Organization @relation(fields: [client_id], references: [id])
+  name             String       @db.Text
+  avg_rating       Float?
+  sentiment_score  Float?
+  review_count     Int?
+  last_updated     DateTime     @default(now())
+
+  @@index([client_id])
 }

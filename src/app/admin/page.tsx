@@ -1,58 +1,52 @@
-import { headers } from "next/headers";
-import { auth } from "~/server/better-auth/config"; // Adjusted path based on your folder structure
 import { db } from "~/server/db";
-import { redirect } from "next/navigation";
-import { Card, CardHeader, CardTitle, CardContent } from "~/components/ui/card";
-import Link from "next/link";
-import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Briefcase, Users, Activity } from "lucide-react";
 
 export default async function AdminDashboard() {
-  const session = await auth.api.getSession({
-    headers: await headers()
+  const clientCount = await db.organization.count({
+    where: { slug: { not: "blackdog-admin" } }
   });
   
-  if (!session) redirect('/sign-in');
-
-  const organizations = await db.organization.findMany({
-    include: {
-      companies: true,
-      _count: {
-        select: { members: true }
-      },
-    },
+  const userCount = await db.user.count();
+  
+  const locationCount = await db.location.count({
+      where: { isActive: true }
   });
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Hub</h1>
-          <p className="text-muted-foreground">Manage Data Pipeline & Clients</p>
-        </div>
-        <Link href="/admin/onboarding">
-          <Button>+ Onboard New Client</Button>
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {organizations.map((org) => (
-          <Link key={org.id} href={`/admin/org/${org.id}`}>
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardHeader>
-                <CardTitle className="flex justify-between">
-                  {org.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>Brands: {org.companies.length}</p>
-                  <p>Users: {org._count.members}</p>
-                  <p className="text-xs text-gray-400 mt-2">ID: {org.id}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+      
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{clientCount}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{userCount}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Locations</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{locationCount}</div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
