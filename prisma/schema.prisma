@@ -1,0 +1,197 @@
+// Generator Config
+generator client {
+  provider = "prisma-client-js"
+  // Keep your custom output if you need it, otherwise remove 'output' to use default node_modules
+  // output   = "../generated/prisma" 
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================================
+// 1. BETTER AUTH CORE (User & Session)
+// =========================================
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?      @db.Text
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  sessions      Session[]
+  accounts      Account[]
+  
+  // BetterAuth Organization Relations
+  members       Member[]
+  invitations   Invitation[]
+
+  @@map("user")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?  @db.Text
+  userAgent            String?  @db.Text
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // This tracks which Org the user is currently "viewing"
+  activeOrganizationId String?  
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String    @db.Text
+  providerId            String    @db.Text
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String   @db.Text
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// =========================================
+// 2. BETTER AUTH ORGANIZATION PLUGIN
+// =========================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String?  @unique // e.g. "marriott-intl"
+  logo        String?  @db.Text
+  createdAt   DateTime @default(now())
+  metadata    String?  @db.Text 
+  
+  members     Member[]
+  invitations Invitation[]
+  
+  // BlackDog Hierarchy
+  companies   Company[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       // "admin", "member", "owner"
+  createdAt      DateTime     @default(now())
+  
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       // "pending", "accepted", "rejected"
+  expiresAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  
+  @@map("invitation")
+}
+
+// =========================================
+// 3. BLACKDOG HIERARCHY (The Admin Hub)
+// =========================================
+
+model Company {
+  id             String       @id @default(cuid())
+  name           String       // e.g. "Hampton Inn"
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  locations      Location[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("company")
+}
+
+model Location {
+  id             String       @id @default(cuid())
+  name           String       // e.g. "Boston Seaport"
+  
+  // Hierarchy
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Address Data (For UI)
+  address        String?
+  city           String?
+  state          String?
+  zip            String?
+
+  // PIPELINE TRIGGERS (The "Control Plane")
+  // Airbyte will read these to know what to fetch
+  isActive       Boolean      @default(true)
+  latitude       Float?       // For Weather API
+  longitude      Float?       // For Weather API
+  googlePlaceId  String?      // For Reviews Scraper
+  
+  // Link to Data Lake Tables
+  weatherData    DashboardWeather[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("location")
+}
+
+// =========================================
+// 4. DATA LAKE TABLES (Managed by Python/dbt)
+// =========================================
+
+// Note: Do not run 'prisma migrate' on this table if possible.
+// Use 'prisma db push' or ensure the Python script handles the DDL.
+model DashboardWeather {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  temp        Float
+  condition   String
+  
+  // Foreign Key to Location
+  // dbt must ensure this 'location_id' matches the Location.id above
+  locationId  String   @map("location_id") 
+  location    Location @relation(fields: [locationId], references: [id])
+
+  @@map("dashboard_weather")
+  @@index([locationId])
+}
